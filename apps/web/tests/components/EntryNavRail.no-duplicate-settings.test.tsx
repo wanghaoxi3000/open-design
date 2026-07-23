@@ -1,18 +1,11 @@
 // @vitest-environment jsdom
 //
-// Regression for 飞书 recvq4hGF7BJkI "Personal 用户，左侧栏有 2 个设置入口".
-//
-// EntryShell.tsx's `railFooterActions` renders its own `entry-settings-chip`
-// exactly when `workspaceContext` is falsy, on the documented premise that
-// "the settings chip stays in the footer as the ONLY settings entry for
-// local/BYOK use" (no cloud identity means no account menu, so something has
-// to open the settings modal). EntryNavRail used to ALSO render its own
-// `entry-nav-settings` list item on that identical falsy-context condition —
-// so any personal/local workspace with no cloud identity showed two visible
-// settings entries for the same `onOpenSettings` action: this rail's own list
-// item, and the caller-supplied footer chip passed in via `footerExtra`.
+// Regression for #5971 removing the signed-out Settings entry together with
+// the old footer chip. Signed-in workspace users keep Settings in their account
+// menu and must not gain another rail entry.
 
 import { cleanup, render, screen } from '@testing-library/react';
+import type { WorkspaceCollabContext } from '@open-design/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { EntryNavRail } from '../../src/components/EntryNavRail';
@@ -22,8 +15,22 @@ afterEach(() => {
   cleanup();
 });
 
-describe('EntryNavRail settings entry (no cloud identity)', () => {
-  it('does not render its own settings entry when there is no workspace context', () => {
+function workspaceContext(): WorkspaceCollabContext {
+  return {
+    workspaceId: 'ws-team',
+    workspaceType: 'team',
+    workspaceMemberId: 'wm-1',
+    teamName: 'OD Feature Team',
+    role: 'owner',
+    memberStatus: 'active',
+    lifecycleState: 'active',
+    permissions: { canInviteMembers: true, canViewWorkspaceSettings: true },
+  } as unknown as WorkspaceCollabContext;
+}
+
+describe('EntryNavRail settings entry', () => {
+  it('renders one settings entry when there is no workspace context', () => {
+    const onOpenSettings = vi.fn();
     render(
       <I18nProvider initial="en">
         <EntryNavRail
@@ -33,16 +40,33 @@ describe('EntryNavRail settings entry (no cloud identity)', () => {
           open
           onClose={() => {}}
           context={null}
-          onOpenSettings={vi.fn()}
-          footerExtra={<button type="button" data-testid="fake-footer-settings-chip" />}
+          onOpenSettings={onOpenSettings}
+          footerExtra={<button type="button" data-testid="fake-updater-popup" />}
         />
       </I18nProvider>,
     );
 
-    // The rail must defer to the caller's footer chip (EntryShell's
-    // `entry-settings-chip`, stood in for here) instead of also offering its
-    // own settings list item — otherwise there are two entries for one action.
+    expect(screen.getAllByTestId('entry-nav-settings')).toHaveLength(1);
+    expect(screen.getByTestId('fake-updater-popup')).toBeTruthy();
+    screen.getByTestId('entry-nav-settings').click();
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not add a rail settings entry for a signed-in workspace user', () => {
+    render(
+      <I18nProvider initial="en">
+        <EntryNavRail
+          view="home"
+          onViewChange={() => {}}
+          onNewProject={() => {}}
+          open
+          onClose={() => {}}
+          context={workspaceContext()}
+          onOpenSettings={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
     expect(screen.queryByTestId('entry-nav-settings')).toBeNull();
-    expect(screen.queryByTestId('fake-footer-settings-chip')).toBeTruthy();
   });
 });
