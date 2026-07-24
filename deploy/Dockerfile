@@ -78,9 +78,16 @@ COPY prompt-templates ./prompt-templates
 COPY assets ./assets
 COPY plugins/_official ./plugins/_official
 
+# Download opencode CLI (latest stable via GitHub redirect)
+RUN mkdir -p /app/.od/bin && \
+    wget -qO /tmp/oc.tar.gz "https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-x64-musl.tar.gz" && \
+    tar xzf /tmp/oc.tar.gz -C /app/.od/bin/ && \
+    rm /tmp/oc.tar.gz && \
+    chmod +x /app/.od/bin/opencode
+
 FROM ${RUNTIME_IMAGE}
 
-RUN apk add --no-cache tini poppler-utils bash git && \
+RUN apk add --no-cache tini poppler-utils bash git libstdc++ && \
     addgroup -S -g 1001 open-design && \
     adduser -S -D -H -u 1001 -G open-design open-design
 
@@ -99,6 +106,7 @@ COPY --from=build --chown=open-design:open-design /app/assets/community-pets ./a
 # it on startup so the container ships with first-party atoms reachable
 # via the same registry path third-party plugins use.
 COPY --from=build --chown=open-design:open-design /app/plugins/_official ./plugins/_official
+COPY --from=build --chown=open-design:open-design /app/.od/bin/opencode /app/.od/bin/opencode
 
 RUN mkdir -p /app/.od && \
     chown -R open-design:open-design /app
@@ -107,6 +115,8 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=192
 ENV OD_BIND_HOST=0.0.0.0
 ENV OD_PORT=7456
+ENV OPENCODE_HOME=/app/.od/.opencode
+ENV PATH="/app/.od/bin:${PATH}"
 
 EXPOSE 7456
 
